@@ -1,0 +1,184 @@
+---
+title: "STATSBOMB Shots Metric"
+author: "Kareem Tarek"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+```{r  load-packages, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(broom)
+library(countrycode)
+library(stringr)
+library(data.table)
+library(ggpubr)
+```
+
+## Preparing The Data
+```{r shots_filtering, include=TRUE, message=FALSE, warning=FALSE}
+# First I load the file and assign it to a variable
+shots <- read.csv2('/Users/kareemtarek/Desktop/Statsbomb/shots.csv',header = TRUE, sep = ",")
+# I then extract only the columns we need for showcasing
+shots_filtered <- shots %>%
+  select(id, play_pattern.name, position.name, shot.statsbomb_xg, shot.technique.name, shot.outcome.name, shot.type.name, shot_distance_x,
+opponents.within.1m)  %>%
+# Now I filter rows to get only the goals.
+filter(shot.outcome.name == 'Goal')  
+```
+__Note that i have a limitation of working with only 2,816 initial observations, and 310 observation after filtering, that's because only data for a single season is provided__
+
+## Validating The Data
+```{r shots_validation, include=TRUE, message=FALSE, warning=FALSE}
+# Now I test the correlation between shot.outcome.name variable and other variables, to see if they contribute to scoring a goal
+  v1 <- ggplot(data=shots_filtered, aes(x= play_pattern.name)) +
+     geom_bar(aes(fill=..count..)) + 
+        ggtitle("Pattern") + 
+        theme(legend.position="none",
+              axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+              axis.title.x=element_blank(),
+              axis.title.y=element_blank(),
+              axis.text.y=element_blank(),
+              axis.ticks.y=element_blank())
+
+ v2 <- ggplot(data=shots_filtered, aes(x= position.name)) +
+     geom_bar(aes(fill=..count..)) + 
+        ggtitle("Position") + 
+        theme(legend.position="none",
+              axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+              axis.title.x=element_blank(),
+              axis.title.y=element_blank(),
+              axis.text.y=element_blank(),
+              axis.ticks.y=element_blank())
+ 
+  v3 <- ggplot(data=shots_filtered, aes(x= shot.technique.name)) +
+     geom_bar(aes(fill=..count..)) + 
+        ggtitle("Technique") + 
+        theme(legend.position="none",
+              axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+              axis.title.x=element_blank(),
+              axis.title.y=element_blank(),
+              axis.text.y=element_blank(),
+              axis.ticks.y=element_blank())
+  
+   v4 <- ggplot(data=shots_filtered, aes(x= shot.type.name)) +
+     geom_bar(aes(fill=..count..)) + 
+        ggtitle("Type") + 
+        theme(legend.position="none",
+              axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+              axis.title.x=element_blank(),
+              axis.title.y=element_blank(),
+              axis.text.y=element_blank(),
+              axis.ticks.y=element_blank())
+   
+    v5 <-  ggplot(data=shots_filtered, aes(x=as.numeric(shot_distance_x))) + 
+        geom_line(aes(fill=..count..), stat="bin", binwidth=1) + 
+        ggtitle("Distance") + 
+        theme(
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            axis.text.y=element_blank(),
+            axis.ticks.y=element_blank())
+    
+    v6 <- ggplot(data=shots_filtered, aes(x=opponents.within.1m)) + 
+        geom_line(aes(fill=..count..), stat="bin", binwidth=1) + 
+        ggtitle("Opponents") + 
+        theme(
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            axis.text.y=element_blank(),
+            axis.ticks.y=element_blank())
+
+ ggarrange(v1, v3, v4, v6, v2, v5,
+          ncol = 3, nrow = 2,
+          common.legend = F)
+
+```
+
+### Key Observations And Next Steps
+1. Nearly all of the goals were scored with Technique=Normal and Shot Type=Open Play, so it is easier exclude them in the next steps (we know that a a goal is oftenly scored with a normal shot, in an open play) 
+
+2. Secondly, for both distance and and number of opponents surrounding the player, it's clear that they having an inversely proportional relationship with scoring.
+
+3. Lastly Shooting pattern and player's position also impacts scoring a goal, so we'd include them as well.
+
+```{r shots_further_filtering, include=TRUE, message=FALSE, warning=FALSE}
+# Removing unwanted columns 
+shots_filtered <- shots_filtered %>%
+  select(id, play_pattern.name, position.name, shot.statsbomb_xg, shot.outcome.name, shot_distance_x,
+opponents.within.1m) 
+```
+
+## Constructing The Metric
+My approach to constructing the metric is using probability. First, i'd give each value of each attribute a probability. For instance in 10 records 8 of them the position was center, so center value is given a probability 0.8. In a single record, I'd combine (multiply) the probability from each value to get our metric. we'd call it score.probability.
+
+Example: score.probability = probability_regular_play * probability_position_value_center * probability_distance_0.. etc.
+
+```{r shots_variable_probability, include=TRUE, message=FALSE, warning=FALSE}
+# Removing unwanted columns 
+shots_final <- shots_filtered %>%
+  group_by(play_pattern.name) %>% 
+  mutate(play_pattern.name.p =  n()/nrow(shots_filtered))
+
+# Repeat for other variables
+shots_final <- shots_final %>%
+  group_by(position.name) %>% 
+  mutate(position.name.p =  n()/nrow(shots_filtered))
+
+shots_final <- shots_final %>%
+  group_by(shot_distance_x) %>% 
+  mutate(shot_distance_x.p =  n()/nrow(shots_filtered))
+
+shots_final <- shots_final %>%
+  group_by(opponents.within.1m) %>% 
+  mutate(opponents.within.1m.p =  n()/nrow(shots_filtered))
+
+# Finally we calculate our new metric using the combination of the newly formed probabilities
+shots_final <- shots_final %>% 
+    rowwise() %>% 
+    mutate(score_probability= play_pattern.name.p * position.name.p * shot_distance_x.p * opponents.within.1m.p)
+```
+
+### Testing The Metric
+
+#### How does this new field compare to StatsBomb's xG (expected goals) field?
+They both use the variables provided to come up with a probability whether a shot is going to be a Goal or not 
+
+```{r q_1, include=TRUE, message=FALSE, warning=FALSE}
+# Now i have the scoring metric, I join it back with the original data set.
+shots_final <- shots_final %>%
+  select(id, score_probability)
+
+shots_merged <- merge(x=shots, y=shots_final, by = "id", all.x = TRUE)
+
+# Replace NA values in score_probability column with 0
+shots_merged$score_probability[is.na(shots_merged$score_probability)] <- 0
+
+### Goals vs the metric (Goals here represents the team performance )
+shots_merged_goals <- shots_merged %>%  
+filter(shot.outcome.name == 'Goal') 
+
+ggplot(data=shots_merged_goals, mapping = aes(x=score_probability)) + 
+        geom_bar(aes(fill=..count..), stat="bin", binwidth=0.0000001) + 
+        ggtitle("Score Probability Vs Goals") + 
+        theme(
+            axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            axis.text.y=element_blank(),
+            axis.ticks.y=element_blank())
+
+# Unfortunately for each probability there ain't as many observations, that's because only data for 1 season was provided, to repeat the process for more seasons
+```
+
+
