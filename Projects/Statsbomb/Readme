@@ -1,0 +1,9 @@
+Here's an overview on what every file contains and the order of opening each of them:-
+
+Statsbomb Test Case.docs(xlsx Notes): notes about cleaning process in STATSBOMB Test Case .xlsx
+STATSBOMB Test Case.xlsx:  My first file to investigate and clean the provided data 
+shots.csv: Exported file from excel (after cleaning)
+Shots_Test_Case.Rmd: R file used to generate the html
+Shots_Test_Case.html: html generated from R's knitting that has documented steps and code about the analysis process
+
+Cheers,
